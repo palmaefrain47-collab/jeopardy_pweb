@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: jeopardy-programacion
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASS
+        sync: false
