@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jeopardy de Programación</title>
+<style>
+:root{--bg:#0b1020;--card:#151c36;--ac:#ffd34d;--tx:#eef1ff;--ok:#2ecc71;--bad:#e74c3c}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:16px}
+h1{color:var(--ac);text-align:center;margin:8px 0 16px}
+.card{background:var(--card);border-radius:12px;padding:16px;max-width:420px;margin:12px auto}
+input{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:1px solid #334;background:#0b1020;color:var(--tx)}
+button{padding:10px 14px;border:0;border-radius:8px;background:var(--ac);color:#111;font-weight:700;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.wrap{display:grid;grid-template-columns:1fr 220px;gap:16px}
+@media(max-width:800px){.wrap{grid-template-columns:1fr}}
+#board{width:100%;border-spacing:6px;table-layout:fixed}
+th{background:#243;padding:10px 4px;font-size:.85rem;border-radius:8px;color:var(--ac)}
+td button{width:100%;padding:12px 0;background:#1d3a8a;color:var(--ac);font-size:1rem}
+td button:disabled{background:#10162b;color:transparent}
+.side{background:var(--card);border-radius:12px;padding:12px}
+ul{list-style:none;padding:0;margin:0}li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #223}
+#opts button{display:block;width:100%;margin:8px 0;text-align:left;background:#1d3a8a;color:var(--tx)}
+#opts .sel{background:#6b5b00}#opts .ok{background:var(--ok);color:#111}#opts .bad{background:var(--bad)}
+#qq{font-size:1.3rem;margin:10px 0}#tm{float:right;font-size:1.6rem;color:var(--ac)}
+details{margin-top:12px}
+</style></head><body>
+<h1>🧠 Jeopardy de Programación</h1>
+
+<div id="home">
+  <div class="card"><b>Unirme a una sala</b>
+    <input id="code" placeholder="Código de sala" maxlength="4">
+    <input id="name" placeholder="Tu nombre" maxlength="20">
+    <button id="join">Entrar</button></div>
+  <div class="card"><details><summary>Soy el profesor (admin)</summary>
+    <input id="u" placeholder="Usuario"><input id="p" type="password" placeholder="Contraseña">
+    <button id="login">Iniciar sesión</button>
+    <button id="create" hidden>Crear sala</button></details></div>
+</div>
+
+<div id="game" hidden>
+  <p style="text-align:center">Sala: <b id="rc" style="font-size:1.6rem;color:var(--ac)"></b></p>
+  <div class="wrap">
+    <div>
+      <table id="board"></table>
+      <div id="qv" class="card" style="max-width:none" hidden>
+        <span id="tm"></span><b id="qt"></b><div id="qq"></div>
+        <div id="opts"></div><div id="ctl"></div>
+      </div>
+    </div>
+    <div class="side"><b>Marcador</b><ul id="score"></ul></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const s = io(), $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let me = { admin: false, token: null, code: null }, st = null, picked = null, cur = { c: -1, i: -1 }, deadline = 0;
+const show = v => { $('home').hidden = v !== 'home'; $('game').hidden = v !== 'game'; };
+
+s.on('connect', () => {
+  const a = JSON.parse(sessionStorage.a || 'null'), p = JSON.parse(sessionStorage.p || 'null');
+  if (a) s.emit('admin:resume', a, r => { if (r.ok) { me = { admin: true, token: a.token, code: r.code }; show('game'); } });
+  else if (p) s.emit('room:join', p, r => { if (r.ok) { me.code = r.code; show('game'); } });
+});
+$('join').onclick = () => {
+  const d = { code: $('code').value.trim().toUpperCase(), name: $('name').value.trim() };
+  s.emit('room:join', d, r => {
+    if (!r.ok) return alert(r.err);
+    me.code = r.code; sessionStorage.p = JSON.stringify(d); show('game');
+  });
+};
+$('login').onclick = () => s.emit('admin:login', { user: $('u').value, pass: $('p').value }, r => {
+  if (!r.ok) return alert('Credenciales incorrectas');
+  me.token = r.token; $('create').hidden = false;
+});
+$('create').onclick = () => s.emit('room:create', { token: me.token }, r => {
+  if (!r.ok) return alert('No se pudo crear la sala');
+  me.admin = true; me.code = r.code; sessionStorage.a = JSON.stringify({ token: me.token, code: r.code }); show('game');
+});
+s.on('state', x => { st = x; render(); });
+$('board').onclick = e => {
+  const b = e.target.closest('button');
+  if (b && me.admin) s.emit('q:open', { c: +b.dataset.c, i: +b.dataset.i });
+};
+$('opts').onclick = e => {
+  const b = e.target.closest('button');
+  if (!b || picked !== null || me.admin) return;
+  picked = +b.dataset.k; s.emit('answer', { opt: picked }); render();
+};
+$('ctl').onclick = e => {
+  if (e.target.id === 'rv') s.emit('q:reveal');
+  if (e.target.id === 'cl') s.emit('q:close');
+};
+setInterval(() => {
+  if (st && st.q && !st.q.done) $('tm').textContent = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}, 250);
+
+function render() {
+  const x = st, q = x.q;
+  $('rc').textContent = x.code;
+  $('score').innerHTML = x.players.map(p => `<li><span>${esc(p.name)}</span><b>${p.score}</b></li>`).join('') || '<li>Esperando jugadores…</li>';
+  $('board').hidden = !!q; $('qv').hidden = !q;
+  if (!q) {
+    $('board').innerHTML = '<tr>' + x.cats.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
+      [...Array(10).keys()].map(i => '<tr>' + x.cats.map((_, c) => {
+        const u = x.used.includes(c + '-' + i);
+        return `<td><button ${u || !me.admin ? 'disabled' : ''} data-c="${c}" data-i="${i}">${u ? '' : (i + 1) * 100}</button></td>`;
+      }).join('') + '</tr>').join('');
+    return;
+  }
+  if (q.c !== cur.c || q.i !== cur.i) { picked = null; cur = { c: q.c, i: q.i }; }
+  deadline = Date.now() + q.ms;
+  $('tm').textContent = q.done ? '' : Math.ceil(q.ms / 1000);
+  $('qt').textContent = `${x.cats[q.c]} · ${q.value} pts`;
+  $('qq').textContent = q.text;
+  $('opts').innerHTML = q.opts.map((o, k) => {
+    let cl = '';
+    if (q.done) cl = k === q.right ? 'ok' : (k === picked ? 'bad' : '');
+    else if (k === picked) cl = 'sel';
+    return `<button class="${cl}" data-k="${k}" ${q.done || me.admin || picked !== null ? 'disabled' : ''}>${esc(o)}</button>`;
+  }).join('');
+  $('ctl').innerHTML = me.admin
+    ? (q.done ? '<button id="cl">Volver al tablero</button>' : `<button id="rv">Mostrar respuesta</button> ${q.n}/${x.players.length} respondieron`)
+    : (picked !== null && !q.done ? 'Respuesta enviada ✔' : '');
+}
+</script></body></html>
