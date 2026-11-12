@@ -242,6 +242,42 @@ body.no-timer #qt{padding-right:0}
 #score li:nth-child(3)::before{content:"🥉"}
 #score li:nth-child(3) b{background:rgba(0,0,0,.14); color:#111}
 .side-note{margin:12px 2px 0; font-size:.78rem; line-height:1.5; color:var(--muted)}
+.music-select{
+  border:1px solid var(--line); background:var(--glass); color:var(--tx);
+  padding:10px 10px; border-radius:999px; font-weight:700; font-size:.85rem; cursor:pointer;
+  backdrop-filter:blur(12px); max-width:132px;
+}
+.music-select option{background:#151c36; color:var(--tx)}
+/* Barra de ítems (trampas Mario Kart) */
+.item-bar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  background:linear-gradient(135deg,rgba(255,211,77,.14),rgba(47,107,255,.14));
+  border:1px solid var(--line); border-radius:16px; padding:12px 14px; margin:0 0 14px;
+  animation:rise .5s var(--ease) both; font-size:.95rem;
+}
+.item-bar[hidden]{display:none}
+.item-bar .my-item{font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.item-bar .my-item small{font-weight:400; color:var(--muted)}
+.item-bar button{padding:9px 14px; font-size:.88rem; border-radius:999px}
+.target-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; font-size:.88rem; color:var(--muted)}
+.target-row button{background:rgba(255,255,255,.14); color:var(--tx); padding:8px 12px; font-size:.85rem}
+#opts.fogged button{filter:blur(7px) saturate(.6); pointer-events:none}
+#opts button.hidden-opt{opacity:.35; text-decoration:line-through; filter:grayscale(1)}
+.spy-info{
+  display:none; margin:0 0 12px; padding:10px 12px; border-radius:12px;
+  background:rgba(47,107,255,.2); border:1px solid rgba(47,107,255,.5); font-size:.92rem; line-height:1.45;
+}
+.spy-info.show{display:block; animation:popIn .35s var(--ease)}
+/* Aviso global (toast) */
+.toast{
+  position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+  z-index:90; max-width:min(520px,calc(100vw - 32px)); text-align:center;
+  background:#171e3d; border:1px solid var(--ac); color:var(--tx);
+  padding:13px 18px; border-radius:999px; font-weight:700; font-size:.95rem;
+  box-shadow:0 18px 44px rgba(0,0,0,.55); opacity:0; pointer-events:none;
+  transition:opacity .3s var(--ease), transform .3s var(--ease);
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 
 /* ---------- Terminar partida: hoja y podio final ---------- */
 .sheet,.overlay{
@@ -297,6 +333,11 @@ body.no-timer #qt{padding-right:0}
   </div>
   <div class="top-actions">
     <button id="musicBtn" class="music-btn" type="button" aria-pressed="false">♪ Música: no</button>
+    <select id="musicStyle" class="music-select" aria-label="Estilo de música">
+      <option value="calma">🎵 Calma</option>
+      <option value="rock">🤘 Rock</option>
+      <option value="minecraft">⛏️ Minecraft</option>
+    </select>
     <div class="teacher">
       <button id="teacherToggle" class="teacher-toggle" type="button" aria-expanded="false" aria-controls="teacherPanel">👩‍🏫 Docente ▾</button>
       <div class="teacher-panel" id="teacherPanel" hidden>
@@ -314,7 +355,15 @@ body.no-timer #qt{padding-right:0}
             <button id="tl20" type="button" class="seg on">20 s</button>
             <button id="tlOff" type="button" class="seg">Sin límite</button>
           </div>
-          <p class="tl-note">El servidor actual siempre cierra la pregunta a los 20&nbsp;s. Si eliges “Sin límite”, aplica el cambio de 1 línea en <b>server.js</b> que te dejo en el mensaje. Sin ese cambio, esta opción solo oculta el cronómetro en pantalla.</p>
+          <p class="tl-note">Con el <b>server.js v2</b> esto ya funciona de verdad: “Sin límite” deja la pregunta abierta hasta que pulses “Mostrar respuesta”.</p>
+        </div>
+        <div class="tl-box">
+          <span class="tl-label">Trampas (Mario Kart)</span>
+          <div class="segmented" role="group" aria-label="Trampas">
+            <button id="trapsOn" type="button" class="seg on">❓ Sí</button>
+            <button id="trapsOff" type="button" class="seg">🚫 No</button>
+          </div>
+          <p class="tl-note">Con trampas, al acertar puedes ganar un ítem aleatorio. Sin trampas, es modo examen, sin ítems ni efectos.</p>
         </div>
       </div>
     </div>
@@ -338,11 +387,16 @@ body.no-timer #qt{padding-right:0}
     <div class="room-chip">Sala: <b id="rc"></b><button id="copyCode" type="button">Copiar código</button></div>
     <button id="endGame" class="end-btn" type="button" hidden>■ Terminar partida</button>
   </div>
+  <div id="itemBar" class="item-bar" hidden>
+    <div class="my-item"><span id="myItemLabel">Sin ítem — acierta para ganar uno ❓</span><button id="useItem" type="button" hidden>Usar ítem</button></div>
+    <div id="targetRow" class="target-row" hidden><span>¿A quién? </span><span id="targetBtns" style="display:flex;gap:8px;flex-wrap:wrap"></span><button id="cancelTarget" type="button">Cancelar</button></div>
+  </div>
   <div class="wrap">
     <div>
       <table id="board"></table>
       <div id="qv" class="card" hidden>
         <span id="tm"></span><b id="qt"></b><div id="qq"></div>
+        <div id="spyInfo" class="spy-info"></div>
         <div id="opts"></div><div id="ctl"></div>
       </div>
     </div>
@@ -376,30 +430,32 @@ body.no-timer #qt{padding-right:0}
   </div>
 </div>
 
+<div id="toast" class="toast" role="status"></div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const s = io(), $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let me = { admin: false, token: null, code: null }, st = null, picked = null, cur = { c: -1, i: -1 }, deadline = 0;
+let me = { admin: false, token: null, code: null, name: null }, st = null, picked = null, cur = { c: -1, i: -1 }, deadline = 0;
 const show = v => { $('home').hidden = v !== 'home'; $('game').hidden = v !== 'game'; };
 
 s.on('connect', () => {
   const a = JSON.parse(sessionStorage.a || 'null'), p = JSON.parse(sessionStorage.p || 'null');
-  if (a) s.emit('admin:resume', a, r => { if (r.ok) { me = { admin: true, token: a.token, code: r.code }; show('game'); } });
-  else if (p) s.emit('room:join', p, r => { if (r.ok) { me.code = r.code; show('game'); } });
+  if (a) s.emit('admin:resume', a, r => { if (r.ok) { me = { admin: true, token: a.token, code: r.code, name: null }; show('game'); } });
+  else if (p) s.emit('room:join', p, r => { if (r.ok) { me.code = r.code; me.name = p.name; show('game'); } });
 });
 $('join').onclick = () => {
   const d = { code: $('code').value.trim().toUpperCase(), name: $('name').value.trim() };
   s.emit('room:join', d, r => {
     if (!r.ok) return alert(r.err);
-    me.code = r.code; sessionStorage.p = JSON.stringify(d); show('game');
+    me.code = r.code; me.name = d.name; sessionStorage.p = JSON.stringify(d); show('game');
   });
 };
 $('login').onclick = () => s.emit('admin:login', { user: $('u').value, pass: $('p').value }, r => {
   if (!r.ok) return alert('Credenciales incorrectas');
   me.token = r.token; $('create').hidden = false;
 });
-$('create').onclick = () => s.emit('room:create', { token: me.token, seconds: timeLimit }, r => {
+$('create').onclick = () => s.emit('room:create', { token: me.token, seconds: timeLimit, traps: trapsEnabled }, r => {
   if (!r.ok) return alert('No se pudo crear la sala');
   me.admin = true; me.code = r.code; sessionStorage.a = JSON.stringify({ token: me.token, code: r.code }); show('game');
 });
@@ -421,11 +477,24 @@ setInterval(() => {
   if (st && st.q && !st.q.done) $('tm').textContent = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
 }, 250);
 
+const ITEM_INFO = {
+  lupa: { e: '🔍', n: 'Lupa', d: 'Elimina 2 opciones incorrectas' },
+  escudo: { e: '🛡️', n: 'Escudo', d: 'Si te atacan, lo bloquea' },
+  tiempo: { e: '⏱️', n: 'Tiempo Extra', d: 'Añade +8 s para todos' },
+  niebla: { e: '🌫️', n: 'Niebla', d: 'Difumina las opciones de un rival 6 s' },
+  barajar: { e: '🔀', n: 'Barajar', d: 'Reordena las opciones de un rival 6 s' },
+  espia: { e: '👀', n: 'Espía', d: 'Ve qué eligió un rival' }
+};
+const TARGET_ITEMS = ['niebla', 'barajar', 'espia'];
+let lastAnnounceId = 0, toastTimer = null;
+
 function render() {
   const x = st, q = x.q;
   $('rc').textContent = x.code;
-  $('score').innerHTML = x.players.map(p => `<li><span>${esc(p.name)}</span><b>${p.score}</b></li>`).join('') || '<li>Esperando jugadores…</li>';
+  // Marcador con ❓ si tiene ítem y 🛡️ si tiene escudo activo
+  $('score').innerHTML = x.players.map(p => `<li><span>${esc(p.name)}${p.shield ? ' 🛡️' : ''}${p.hasItem ? ' ❓' : ''}</span><b>${p.score}</b></li>`).join('') || '<li>Esperando jugadores…</li>';
   $('board').hidden = !!q; $('qv').hidden = !q;
+  updateItemBar(); showAnnounce();
   if (!q) {
     $('board').innerHTML = '<tr>' + x.cats.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
       [...Array(10).keys()].map(i => '<tr>' + x.cats.map((_, c) => {
@@ -439,15 +508,57 @@ function render() {
   $('tm').textContent = q.done ? '' : Math.ceil(q.ms / 1000);
   $('qt').textContent = `${x.cats[q.c]} · ${q.value} pts`;
   $('qq').textContent = q.text;
-  $('opts').innerHTML = q.opts.map((o, k) => {
+  // Niebla sobre mí: difuminar mis opciones (el servidor lo manda en effects)
+  const fogged = !q.done && (x.effects || []).some(e => e.type === 'niebla' && e.target === me.name && e.until > Date.now());
+  $('opts').classList.toggle('fogged', fogged);
+  // Espía: qué eligió mi objetivo (solo yo lo veo)
+  const spy = $('spyInfo');
+  if (!q.done && x.spyPick) {
+    spy.innerHTML = `👀 <b>Espía:</b> ${esc(x.spyPick.target)} eligió “${esc(String(x.spyPick.text).slice(0, 60))}”`;
+    spy.classList.add('show');
+  } else { spy.classList.remove('show'); spy.textContent = ''; }
+  // Opciones: Lupa oculta 2 incorrectas solo para mí; Barajar reordena solo mi vista
+  const hidden = new Set(x.myHidden || []);
+  let order = [0, 1, 2, 3];
+  if (!q.done && x.myShuffle) order = x.myShuffle.slice();
+  $('opts').innerHTML = order.map(k => {
+    const o = q.opts[k];
     let cl = '';
     if (q.done) cl = k === q.right ? 'ok' : (k === picked ? 'bad' : '');
     else if (k === picked) cl = 'sel';
-    return `<button class="${cl}" data-k="${k}" ${q.done || me.admin || picked !== null ? 'disabled' : ''}>${esc(o)}</button>`;
+    if (!q.done && hidden.has(k)) cl += ' hidden-opt';
+    return `<button class="${cl.trim()}" data-k="${k}" ${q.done || me.admin || picked !== null || (!q.done && hidden.has(k)) ? 'disabled' : ''}>${esc(o)}</button>`;
   }).join('');
   $('ctl').innerHTML = me.admin
     ? (q.done ? '<button id="cl">Volver al tablero</button>' : `<button id="rv">Mostrar respuesta</button> ${q.n}/${x.players.length} respondieron`)
     : (picked !== null && !q.done ? 'Respuesta enviada ✔' : '');
+}
+function updateItemBar() {
+  const bar = $('itemBar');
+  if (me.admin || $('game').hidden) { bar.hidden = true; return; }
+  if (!st || st.traps === false) {
+    bar.hidden = false;
+    $('myItemLabel').innerHTML = '🚫 Trampas desactivadas en esta sala';
+    $('useItem').hidden = true; $('targetRow').hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  const it = st.myItem, info = it ? ITEM_INFO[it] : null;
+  $('myItemLabel').innerHTML = info
+    ? `${info.e} <b>${info.n}</b> <small>— ${info.d}</small>${st.myShield ? ' · 🛡️ Escudo activo' : ''}`
+    : `Sin ítem — acierta para ganar uno ❓${st.myShield ? ' · 🛡️ Escudo activo' : ''}`;
+  $('useItem').hidden = !info;
+  if (info) $('useItem').textContent = `Usar ${info.n}`;
+  if ($('targetRow').hidden === false && !info) $('targetRow').hidden = true;
+}
+function showAnnounce() {
+  if (!st || !st.announce || st.announce.id === lastAnnounceId) return;
+  lastAnnounceId = st.announce.id;
+  const t = $('toast');
+  t.textContent = st.announce.text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
 }
 
 /* ============================================================
@@ -495,6 +606,42 @@ $('tl20').onclick = () => { timeLimit = 20; localStorage.setItem('jeopardy-tl', 
 $('tlOff').onclick = () => { timeLimit = 0; localStorage.setItem('jeopardy-tl', '0'); applyTl(); };
 applyTl();
 
+// --- Trampas: sí (por defecto) o no (modo examen) ---
+let trapsEnabled = localStorage.getItem('jeopardy-traps') !== '0';
+function applyTraps() {
+  $('trapsOn').classList.toggle('on', trapsEnabled);
+  $('trapsOff').classList.toggle('on', !trapsEnabled);
+}
+$('trapsOn').onclick = () => { trapsEnabled = true; localStorage.setItem('jeopardy-traps', '1'); applyTraps(); };
+$('trapsOff').onclick = () => { trapsEnabled = false; localStorage.setItem('jeopardy-traps', '0'); applyTraps(); };
+applyTraps();
+
+// --- Usar ítem (trampas) ---
+function sendItem(item, target) {
+  s.emit('item:use', { item, target: target || null }, r => {
+    if (r && !r.ok) alert(r.err || 'No se pudo usar el ítem');
+    else if (r && r.blocked) alert('🛡️ ¡El Escudo del rival bloqueó tu ataque! Conservas tu ítem.');
+  });
+}
+$('useItem').onclick = () => {
+  const it = st && st.myItem;
+  if (!it) return;
+  if (!TARGET_ITEMS.includes(it)) { sendItem(it); return; }
+  // Ítem con objetivo: elegir rival (sin repetirse, lo valida el servidor)
+  const rivals = (st.players || []).filter(p => p.name !== me.name);
+  if (!rivals.length) return alert('No hay rivales a los que atacar');
+  $('targetBtns').innerHTML = rivals.map(p => `<button type="button" data-t="${esc(p.name)}">${esc(p.name)}</button>`).join('');
+  $('targetRow').hidden = false;
+};
+$('targetBtns').onclick = e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const it = st && st.myItem;
+  $('targetRow').hidden = true;
+  if (it) sendItem(it, b.dataset.t);
+};
+$('cancelTarget').onclick = () => { $('targetRow').hidden = true; };
+
 // --- Visibilidad según el estado: docente solo en inicio, fin solo para admin ---
 // --- y cronómetro en rojo cuando quedan 5 s o menos ---
 setInterval(() => {
@@ -534,12 +681,17 @@ $('finalExit').onclick = () => {
   location.reload();
 };
 
-// --- Música de fondo: generada con Web Audio, sin archivos externos ---
-// Suena solo cuando el usuario pulsa el botón (el navegador no
-// permite autoplay con sonido). Melodía suave en bucle + bajos.
+// --- Música de fondo: 3 estilos, generada con Web Audio, sin archivos ---
+// Calma: melodía suave + bajos. Rock: acordes de potencia + bombo/caja.
+// Minecraft: piano suave, arpegio lento en pentatónica mayor, estilo C418.
+// Suena solo cuando el usuario pulsa el botón (sin autoplay con sonido).
 let audioCtx = null, musicOn = false, musicTimer = null, musicStep = 0;
+let musicStyle = localStorage.getItem('jeopardy-music') || 'calma';
+$('musicStyle').value = musicStyle;
 const MELODY = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33, 523.25, 392.00];
 const BASS = [130.81, 98.00, 110.00, 146.83];
+const MC_NOTES = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 783.99, 659.25];
+const ROCK_ROOTS = [110.00, 87.31, 130.81, 98.00]; // A2 F2 C3 G2: Am F C G
 function tone(freq, when, dur, type, vol) {
   if (!audioCtx) return;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -550,25 +702,79 @@ function tone(freq, when, dur, type, vol) {
   o.connect(g); g.connect(audioCtx.destination);
   o.start(when); o.stop(when + dur + 0.05);
 }
+function rockChord(root, when) {
+  // Acorde de potencia: raíz + quinta, sierra con filtro paso-bajo
+  [root, root * 1.5].forEach(f => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), fl = audioCtx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = f;
+    fl.type = 'lowpass'; fl.frequency.value = 1100;
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(0.05, when + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    o.connect(fl); fl.connect(g); g.connect(audioCtx.destination);
+    o.start(when); o.stop(when + 0.25);
+  });
+}
+function drum(kind, when) {
+  if (kind === 'kick') {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(130, when);
+    o.frequency.exponentialRampToValueAtTime(42, when + 0.12);
+    g.gain.setValueAtTime(0.22, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.16);
+    o.connect(g); g.connect(audioCtx.destination); o.start(when); o.stop(when + 0.18);
+  } else {
+    const len = Math.floor(audioCtx.sampleRate * 0.08);
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = audioCtx.createBufferSource(), g = audioCtx.createGain(), fl = audioCtx.createBiquadFilter();
+    src.buffer = buf; fl.type = 'highpass'; fl.frequency.value = 1500;
+    g.gain.setValueAtTime(0.12, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.09);
+    src.connect(fl); fl.connect(g); g.connect(audioCtx.destination); src.start(when);
+  }
+}
 function playStep() {
   if (!musicOn || !audioCtx) return;
   const t = audioCtx.currentTime + 0.05;
-  tone(MELODY[musicStep % MELODY.length], t, 0.9, 'sine', 0.055);
-  if (musicStep % 2 === 0) tone(MELODY[(musicStep + 2) % MELODY.length] / 2, t, 1.2, 'triangle', 0.035);
-  if (musicStep % 4 === 0) tone(BASS[Math.floor(musicStep / 4) % BASS.length], t, 1.8, 'sine', 0.05);
+  if (musicStyle === 'rock') {
+    const bar = Math.floor(musicStep / 8) % ROCK_ROOTS.length, step = musicStep % 8;
+    rockChord(ROCK_ROOTS[bar], t);
+    if (step === 0 || step === 4) drum('kick', t);
+    if (step === 2 || step === 6) drum('snare', t);
+  } else if (musicStyle === 'minecraft') {
+    // Paso aleatorio suave por la pentatónica, nota larga con caída de piano
+    const idx = Math.max(0, Math.min(MC_NOTES.length - 1, 3 + Math.round(Math.sin(musicStep * 0.9) * 2 + (Math.random() * 2 - 1))));
+    tone(MC_NOTES[idx], t, 1.9, 'sine', 0.06);
+    tone(MC_NOTES[idx] / 2, t, 2.2, 'triangle', 0.03);
+    if (musicStep % 8 === 0) tone(130.81, t, 2.4, 'sine', 0.045);
+  } else {
+    tone(MELODY[musicStep % MELODY.length], t, 0.9, 'sine', 0.055);
+    if (musicStep % 2 === 0) tone(MELODY[(musicStep + 2) % MELODY.length] / 2, t, 1.2, 'triangle', 0.035);
+    if (musicStep % 4 === 0) tone(BASS[Math.floor(musicStep / 4) % BASS.length], t, 1.8, 'sine', 0.05);
+  }
   musicStep++;
+}
+function musicInterval() { return musicStyle === 'rock' ? 210 : musicStyle === 'minecraft' ? 560 : 450; }
+function startMusic() {
+  musicStep = 0; playStep();
+  clearInterval(musicTimer); musicTimer = setInterval(playStep, musicInterval());
 }
 $('musicBtn').onclick = async () => {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     await audioCtx.resume();
     musicOn = !musicOn;
-    if (musicOn) { musicStep = 0; playStep(); musicTimer = setInterval(playStep, 450); }
+    if (musicOn) startMusic();
     else if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
     $('musicBtn').textContent = musicOn ? '♪ Música: sí' : '♪ Música: no';
     $('musicBtn').classList.toggle('on', musicOn);
     $('musicBtn').setAttribute('aria-pressed', String(musicOn));
   } catch (e) { alert('Tu navegador no permitió iniciar el audio. Púlsalo de nuevo.'); }
+};
+$('musicStyle').onchange = () => {
+  musicStyle = $('musicStyle').value;
+  localStorage.setItem('jeopardy-music', musicStyle);
+  if (musicOn) startMusic();
 };
 // Sonidos de acierto / fallo (solo si la música está activa)
 let lastSoundKey = '';
